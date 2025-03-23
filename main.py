@@ -7,7 +7,6 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 import os
-import asyncio
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -15,6 +14,7 @@ load_dotenv()
 # Acessa o token do bot
 TOKEN = os.getenv("TOKEN")
 
+# Resto do código...
 # Função para enviar mensagem para o webhook
 async def enviar_webhook(webhook_url, embed, cargos=None, canal_carrinho=None):
     data = {
@@ -477,36 +477,9 @@ def get_roblox_avatar_url(user_id):
         print(f"Erro na requisição: {e}")
         return None
 
-# Função para recriar o painel a cada 5 minutos
-async def recriar_painel(channel):
-    while True:
-        await asyncio.sleep(300)  # Espera 5 minutos (300 segundos)
-        # Apaga a mensagem anterior (se existir)
-        async for message in channel.history(limit=1):
-            if message.author == bot.user:
-                await message.delete()
-                break
-        # Recria o painel
-        embed = discord.Embed(
-            title="PAINEL DE COMPRAS",
-            description="> Olá, seja bem-vindo ao painel de compras. Para comprar, basta selecionar o que deseja comprar no menu abaixo.",
-            color=discord.Color.blue()
-        )
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1340143464041414796/1353119422784737381/image.png?ex=67e07e2a&is=67df2caa&hm=c8c0917e08c179224a42511e719e56c248d578c7a35bccd58656b6d67599089b&")
-        select = Select(
-            placeholder="Selecione o método de compra",
-            options=[
-                discord.SelectOption(label="Robux via gamepass", value="gamepass", description="Compre robux via gamepass aqui."),
-                discord.SelectOption(label="Robux via grupo", value="grupo", description="Compre robux via grupo aqui.")
-            ]
-        )
-        view = View()
-        view.add_item(select)
-        await channel.send(embed=embed, view=view)
-
 # Comando !set para enviar o painel de compras
 @bot.command()
-@commands.has_permissions(administrator=True)
+@commands.has_permissions(administrator=True)  # Restringe o comando a administradores
 async def set(ctx):
     # Cria a embed
     embed = discord.Embed(
@@ -514,7 +487,11 @@ async def set(ctx):
         description="> Olá, seja bem-vindo ao painel de compras. Para comprar, basta selecionar o que deseja comprar no menu abaixo.",
         color=discord.Color.blue()
     )
+
+    # Adiciona a imagem ao painel de compras
     embed.set_image(url="https://cdn.discordapp.com/attachments/1340143464041414796/1353119422784737381/image.png?ex=67e07e2a&is=67df2caa&hm=c8c0917e08c179224a42511e719e56c248d578c7a35bccd58656b6d67599089b&")
+
+    # Cria o menu de seleção
     select = Select(
         placeholder="Selecione o método de compra",
         options=[
@@ -522,12 +499,77 @@ async def set(ctx):
             discord.SelectOption(label="Robux via grupo", value="grupo", description="Compre robux via grupo aqui.")
         ]
     )
+
+    # Função de callback para o menu de seleção
+    async def select_callback(interaction):
+        if select.values[0] == "gamepass":
+            user_id = interaction.user.id
+
+            # Verifica se o usuário já tem um carrinho aberto
+            if user_id in carrinhos_abertos:
+                await interaction.response.send_message(
+                    f"Erro, você já tem um carrinho aberto em #{carrinhos_abertos[user_id].name}.",
+                    ephemeral=True
+                )
+                return
+
+            await interaction.response.send_message("Gerando carrinho, aguarde...", ephemeral=True)  # Resposta visível apenas para o usuário
+
+            # Cria o canal de texto privado
+            channel = await create_private_channel(interaction.guild, interaction.user)
+
+            # Armazena o canal no dicionário de carrinhos abertos
+            carrinhos_abertos[user_id] = channel
+
+            # Envia a mensagem de confirmação no canal privado
+            await channel.send(f"{interaction.user.mention}, seu carrinho foi criado com sucesso! Siga as instruções de compra abaixo para realizar sua compra, qualquer dúvida, apenas aguarde um administrador entrar em contato <@&1340343156121800716> <@&1340127685346594896>")
+
+            # Envia a mensagem de confirmação para o usuário
+            await interaction.followup.send(
+                f"Seu carrinho foi aberto em {channel.mention}. Continue sua compra por lá!",
+                ephemeral=True
+            )
+
+            # Envia o painel de atendimento automático
+            await send_painel_atendimento(channel, "gamepass")
+        elif select.values[0] == "grupo":
+            user_id = interaction.user.id
+
+            # Verifica se o usuário já tem um carrinho aberto
+            if user_id in carrinhos_abertos:
+                await interaction.response.send_message(
+                    f"Erro, você já tem um carrinho aberto em #{carrinhos_abertos[user_id].name}.",
+                    ephemeral=True
+                )
+                return
+
+            await interaction.response.send_message("Gerando carrinho, aguarde...", ephemeral=True)  # Resposta visível apenas para o usuário
+
+            # Cria o canal de texto privado
+            channel = await create_private_channel(interaction.guild, interaction.user)
+
+            # Armazena o canal no dicionário de carrinhos abertos
+            carrinhos_abertos[user_id] = channel
+
+            # Envia a mensagem de confirmação no canal privado
+            await channel.send(f"{interaction.user.mention}, seu carrinho foi criado com sucesso! Siga as instruções de compra abaixo para realizar sua compra, qualquer dúvida, apenas aguarde um administrador entrar em contato <@&1340343156121800716> <@&1340127685346594896>")
+
+            # Envia a mensagem de confirmação para o usuário
+            await interaction.followup.send(
+                f"Seu carrinho foi aberto em {channel.mention}. Continue sua compra por lá!",
+                ephemeral=True
+            )
+
+            # Envia o painel de atendimento automático
+            await send_painel_atendimento(channel, "grupo")
+
+    # Adiciona o callback ao menu
+    select.callback = select_callback
+
+    # Cria a view e envia a embed com o menu
     view = View()
     view.add_item(select)
     await ctx.send(embed=embed, view=view)
-
-    # Inicia o loop para recriar o painel
-    bot.loop.create_task(recriar_painel(ctx.channel))
 
 # Evento para remover o carrinho do dicionário quando o canal é excluído
 @bot.event
