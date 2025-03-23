@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.ui import Button, View, Select
 from discord import app_commands
 import requests
@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 import os
+import asyncio
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -62,6 +63,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Dicionário para armazenar os carrinhos abertos
 carrinhos_abertos = {}
+
+# Variável para armazenar a mensagem do painel
+painel_message = None
 
 # Função para criar um canal de texto privado
 async def create_private_channel(guild, user):
@@ -477,10 +481,8 @@ def get_roblox_avatar_url(user_id):
         print(f"Erro na requisição: {e}")
         return None
 
-# Comando !set para enviar o painel de compras
-@bot.command()
-@commands.has_permissions(administrator=True)  # Restringe o comando a administradores
-async def set(ctx):
+# Função para enviar o painel de compras
+async def send_painel(ctx):
     # Cria a embed
     embed = discord.Embed(
         title="PAINEL DE COMPRAS",
@@ -569,7 +571,23 @@ async def set(ctx):
     # Cria a view e envia a embed com o menu
     view = View()
     view.add_item(select)
-    await ctx.send(embed=embed, view=view)
+    return await ctx.send(embed=embed, view=view)
+
+# Tarefa para reenviar o painel a cada 5 minutos
+@tasks.loop(minutes=5)
+async def reenviar_painel(ctx):
+    global painel_message
+    if painel_message:
+        await painel_message.delete()
+    painel_message = await send_painel(ctx)
+
+# Comando !set para enviar o painel de compras
+@bot.command()
+@commands.has_permissions(administrator=True)  # Restringe o comando a administradores
+async def set(ctx):
+    global painel_message
+    painel_message = await send_painel(ctx)
+    reenviar_painel.start(ctx)
 
 # Evento para remover o carrinho do dicionário quando o canal é excluído
 @bot.event
