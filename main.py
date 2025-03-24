@@ -15,7 +15,19 @@ load_dotenv()
 # Acessa o token do bot
 TOKEN = os.getenv("TOKEN")
 
-# Resto do código...
+# Configurações do bot
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True  # Permite que o bot veja os membros do servidor
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Dicionário para armazenar os carrinhos abertos
+carrinhos_abertos = {}
+
+# Variável para armazenar a mensagem do painel
+painel_message = None
+
 # Função para enviar mensagem para o webhook
 async def enviar_webhook(webhook_url, embed, cargos=None, canal_carrinho=None):
     data = {
@@ -53,19 +65,6 @@ def gerar_payload_pix(chave_pix, valor, nome_recebedor, cidade_recebedor):
     except requests.exceptions.RequestException as e:
         print(f"Erro ao gerar payload PIX: {e}")
         return None
-
-# Configurações do bot
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True  # Permite que o bot veja os membros do servidor
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Dicionário para armazenar os carrinhos abertos
-carrinhos_abertos = {}
-
-# Variável para armazenar a mensagem do painel
-painel_message = None
 
 # Função para criar um canal de texto privado
 async def create_private_channel(guild, user):
@@ -114,13 +113,11 @@ async def send_painel_atendimento(channel, metodo_compra):
         # Função de callback para o botão "Robux com taxa"
         async def com_taxa_callback(interaction):
             await interaction.response.defer()
-            await interaction.message.delete()  # Apaga a embed anterior
             await send_carrinho_embed(interaction, 45.00)  # 1000 Robux com taxa custam R$ 45,00
 
         # Função de callback para o botão "Robux sem taxa"
         async def sem_taxa_callback(interaction):
             await interaction.response.defer()
-            await interaction.message.delete()  # Apaga a embed anterior
             await send_carrinho_embed(interaction, 35.00)  # 1000 Robux sem taxa custam R$ 35,00
 
         # Função de callback para o botão "Cancelar compra"
@@ -148,7 +145,6 @@ async def send_painel_atendimento(channel, metodo_compra):
         # Função de callback para o botão "Robux com taxa"
         async def com_taxa_callback(interaction):
             await interaction.response.defer()
-            await interaction.message.delete()  # Apaga a embed anterior
             await send_carrinho_embed(interaction, 45.00)  # 1000 Robux com taxa custam R$ 45,00
 
         # Função de callback para o botão "Cancelar compra"
