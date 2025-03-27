@@ -25,8 +25,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Dicionário para armazenar os carrinhos abertos
 carrinhos_abertos = {}
 
-# Variável para armazenar a mensagem do painel
-painel_message = None
+# Tempo de timeout para as views (em segundos)
+VIEW_TIMEOUT = 300  # 5 minutos
 
 # Função para enviar mensagem para o webhook
 async def enviar_webhook(webhook_url, embed, cargos=None, canal_carrinho=None):
@@ -95,86 +95,70 @@ async def create_private_channel(guild, user):
     )
     return channel
 
-# Função para enviar o painel de atendimento automático
-async def send_painel_atendimento(channel, metodo_compra):
-    # Cria a embed
-    embed = discord.Embed(
-        title="Bem-vindo(a) ao Atendimento automático da Fapy Store!",
-        description="Para continuar com a compra, selecione abaixo o método de compra desejado.",
-        color=discord.Color.blue()
-    )
+# Classe para o painel de atendimento automático
+class PainelAtendimentoView(View):
+    def __init__(self, metodo_compra):
+        super().__init__(timeout=VIEW_TIMEOUT)
+        self.metodo_compra = metodo_compra
+        
+        # Adiciona botões conforme o método de compra
+        if metodo_compra == "gamepass":
+            com_taxa = Button(label="Robux com taxa", style=discord.ButtonStyle.red)
+            sem_taxa = Button(label="Robux sem taxa", style=discord.ButtonStyle.green)
+            cancelar = Button(label="Cancelar compra", style=discord.ButtonStyle.danger)
+            
+            com_taxa.callback = self.com_taxa_callback
+            sem_taxa.callback = self.sem_taxa_callback
+            cancelar.callback = self.cancelar_callback
+            
+            self.add_item(com_taxa)
+            self.add_item(sem_taxa)
+            self.add_item(cancelar)
+        elif metodo_compra == "grupo":
+            com_taxa = Button(label="Robux com taxa", style=discord.ButtonStyle.red)
+            sem_taxa = Button(label="Robux sem taxa", style=discord.ButtonStyle.green, disabled=True)
+            cancelar = Button(label="Cancelar compra", style=discord.ButtonStyle.danger)
+            
+            com_taxa.callback = self.com_taxa_callback
+            cancelar.callback = self.cancelar_callback
+            
+            self.add_item(com_taxa)
+            self.add_item(sem_taxa)
+            self.add_item(cancelar)
+    
+    async def com_taxa_callback(self, interaction):
+        await interaction.response.defer()
+        await send_carrinho_embed(interaction, 45.00)
+    
+    async def sem_taxa_callback(self, interaction):
+        await interaction.response.defer()
+        await send_carrinho_embed(interaction, 35.00)
+    
+    async def cancelar_callback(self, interaction):
+        await interaction.response.defer()
+        await confirmar_cancelamento(interaction)
+    
+    async def on_timeout(self):
+        # Remove os botões quando o tempo acabar
+        for item in self.children:
+            item.disabled = True
+        await self.message.edit(view=self)
 
-    if metodo_compra == "gamepass":
-        # Cria os botões para Robux via gamepass
-        com_taxa = Button(label="Robux com taxa", style=discord.ButtonStyle.red)
-        sem_taxa = Button(label="Robux sem taxa", style=discord.ButtonStyle.green)
-        cancelar = Button(label="Cancelar compra", style=discord.ButtonStyle.danger)
-
-        # Função de callback para o botão "Robux com taxa"
-        async def com_taxa_callback(interaction):
-            await interaction.response.defer()
-            await send_carrinho_embed(interaction, 45.00)  # 1000 Robux com taxa custam R$ 45,00
-
-        # Função de callback para o botão "Robux sem taxa"
-        async def sem_taxa_callback(interaction):
-            await interaction.response.defer()
-            await send_carrinho_embed(interaction, 35.00)  # 1000 Robux sem taxa custam R$ 35,00
-
-        # Função de callback para o botão "Cancelar compra"
-        async def cancelar_callback(interaction):
-            await interaction.response.defer()
-            await confirmar_cancelamento(interaction)
-
-        # Adiciona os callbacks aos botões
-        com_taxa.callback = com_taxa_callback
-        sem_taxa.callback = sem_taxa_callback
-        cancelar.callback = cancelar_callback
-
-        # Cria a view e envia a embed com os botões
-        view = View()
-        view.add_item(com_taxa)
-        view.add_item(sem_taxa)
-        view.add_item(cancelar)
-        await channel.send(embed=embed, view=view)
-    elif metodo_compra == "grupo":
-        # Cria os botões para Robux via grupo (apenas "com taxa")
-        com_taxa = Button(label="Robux com taxa", style=discord.ButtonStyle.red)
-        sem_taxa = Button(label="Robux sem taxa", style=discord.ButtonStyle.green, disabled=True)  # Botão desabilitado
-        cancelar = Button(label="Cancelar compra", style=discord.ButtonStyle.danger)
-
-        # Função de callback para o botão "Robux com taxa"
-        async def com_taxa_callback(interaction):
-            await interaction.response.defer()
-            await send_carrinho_embed(interaction, 45.00)  # 1000 Robux com taxa custam R$ 45,00
-
-        # Função de callback para o botão "Cancelar compra"
-        async def cancelar_callback(interaction):
-            await interaction.response.defer()
-            await confirmar_cancelamento(interaction)
-
-        # Adiciona os callbacks aos botões
-        com_taxa.callback = com_taxa_callback
-        cancelar.callback = cancelar_callback
-
-        # Cria a view e envia a embed com os botões
-        view = View()
-        view.add_item(com_taxa)
-        view.add_item(sem_taxa)  # Botão "Sem taxa" desabilitado
-        view.add_item(cancelar)
-        await channel.send(embed=embed, view=view)
-
-# Função para confirmar o cancelamento da compra
-async def confirmar_cancelamento(interaction):
-    embed = discord.Embed(
-        title="Cancelar Compra",
-        description="Você realmente deseja fechar o seu carrinho?",
-        color=discord.Color.orange()
-    )
-
-    sim = Button(label="Sim", style=discord.ButtonStyle.success)
-    nao = Button(label="Não", style=discord.ButtonStyle.danger)
-
-    async def sim_callback(interaction):
+# Classe para confirmação de cancelamento
+class ConfirmarCancelamentoView(View):
+    def __init__(self):
+        super().__init__(timeout=VIEW_TIMEOUT)
+        
+        sim = Button(label="Sim", style=discord.ButtonStyle.success)
+        nao = Button(label="Não", style=discord.ButtonStyle.danger)
+        
+        sim.callback = self.sim_callback
+        nao.callback = self.nao_callback
+        
+        self.add_item(sim)
+        self.add_item(nao)
+    
+    async def sim_callback(self, interaction):
         await interaction.response.defer()
         await interaction.message.delete()
 
@@ -185,43 +169,41 @@ async def confirmar_cancelamento(interaction):
             del carrinhos_abertos[interaction.user.id]
 
         await interaction.followup.send("Carrinho fechado. Use o comando novamente para reiniciar o processo.")
-
-    async def nao_callback(interaction):
+    
+    async def nao_callback(self, interaction):
         await interaction.response.defer()
         await interaction.message.delete()
         await interaction.followup.send("Compra continuada.", ephemeral=True)
+    
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        await self.message.edit(view=self)
 
-    sim.callback = sim_callback
-    nao.callback = nao_callback
-
-    view = View()
-    view.add_item(sim)
-    view.add_item(nao)
-    await interaction.followup.send(embed=embed, view=view)
-
-# Função para enviar a embed do carrinho
-async def send_carrinho_embed(interaction, preco_por_1000):
-    # Cria a embed do carrinho
-    embed = discord.Embed(
-        title="CARRINHO",
-        description="Preencha as informações abaixo para continuar com a compra.",
-        color=discord.Color.blue()
-    )
-    embed.add_field(name="Quantidade de robux desejada:", value="(Aguardando...)", inline=False)
-    embed.add_field(name="Valor final:", value="(Aguardando...)", inline=False)
-
-    # Cria os botões
-    prosseguir = Button(label="Prosseguir com a compra", style=discord.ButtonStyle.primary)
-    retornar = Button(label="Retornar à aba anterior", style=discord.ButtonStyle.secondary)
-    cancelar = Button(label="Cancelar a compra", style=discord.ButtonStyle.danger)
-
-    # Função de callback para o botão "Prosseguir com a compra"
-    async def prosseguir_callback(interaction):
+# Classe para o carrinho de compras
+class CarrinhoView(View):
+    def __init__(self, preco_por_1000):
+        super().__init__(timeout=VIEW_TIMEOUT)
+        self.preco_por_1000 = preco_por_1000
+        self.quantidade = None
+        
+        prosseguir = Button(label="Prosseguir com a compra", style=discord.ButtonStyle.primary)
+        retornar = Button(label="Retornar à aba anterior", style=discord.ButtonStyle.secondary)
+        cancelar = Button(label="Cancelar a compra", style=discord.ButtonStyle.danger)
+        
+        prosseguir.callback = self.prosseguir_callback
+        retornar.callback = self.retornar_callback
+        cancelar.callback = self.cancelar_callback
+        
+        self.add_item(prosseguir)
+        self.add_item(retornar)
+        self.add_item(cancelar)
+    
+    async def prosseguir_callback(self, interaction):
         await interaction.response.defer()
-        await interaction.message.delete()  # Apaga a embed anterior
+        await interaction.message.delete()
         await interaction.followup.send("Agora, para finalizarmos sua compra, informe seu nome de usuário do Roblox.")
 
-        # Aguarda o nome de usuário do Roblox
         def check(m):
             return m.author == interaction.user and m.channel == interaction.channel
 
@@ -230,7 +212,6 @@ async def send_carrinho_embed(interaction, preco_por_1000):
                 msg = await bot.wait_for("message", timeout=60.0, check=check)
                 username = msg.content
 
-                # Obtém o ID e o avatar do usuário
                 user_id = get_roblox_user_id(username)
                 if not user_id:
                     await interaction.followup.send("Não foi possível encontrar o usuário. Verifique o nome de usuário e tente novamente.")
@@ -241,175 +222,237 @@ async def send_carrinho_embed(interaction, preco_por_1000):
                     await interaction.followup.send("Não foi possível obter o avatar do usuário.")
                     continue
 
-                # Envia a embed com o avatar
                 embed = discord.Embed(
                     title="Confirmação de Usuário",
                     description="Este é seu usuário do Roblox?",
                     color=discord.Color.blue()
                 )
-                embed.set_thumbnail(url=avatar_url)  # Adiciona o avatar como thumbnail
+                embed.set_thumbnail(url=avatar_url)
                 embed.set_image(url=avatar_url)
 
-                # Cria os botões de confirmação
-                sim = Button(label="Sim", style=discord.ButtonStyle.success)
-                nao = Button(label="Não", style=discord.ButtonStyle.danger)
-
-                # Função de callback para o botão "Sim"
-                async def sim_callback(interaction):
-                    await interaction.response.defer()
-                    await interaction.message.delete()  # Apaga a embed anterior
-
-                    # Configurações do PIX
-                    CHAVE_PIX = "12423896603"  # Chave PIX (CPF)
-                    NOME_RECEBEDOR = "Bernardo"  # Nome do recebedor
-                    CIDADE_RECEBEDOR = "Rio de Janeiro"  # Cidade do recebedor
-
-                    # Gera o payload PIX
-                    valor_total = (quantidade / 1000) * preco_por_1000
-                    payload_pix = gerar_payload_pix(CHAVE_PIX, f"{valor_total:.2f}", NOME_RECEBEDOR, CIDADE_RECEBEDOR)
-
-                    if not payload_pix:
-                        await interaction.followup.send("Erro ao gerar o pagamento PIX. Tente novamente mais tarde.", ephemeral=True)
-                        return
-
-                    # Cria a embed de pagamento
-                    embed = discord.Embed(
-                        title="## PAGAMENTO VIA PIX",
-                        description=f"**Valor:** R$ {valor_total:.2f}\n\nUse o código PIX abaixo para realizar o pagamento:",
-                        color=discord.Color.green()
-                    )
-                    embed.add_field(name="Código PIX:", value=f"`{payload_pix}`", inline=False)
-
-                    # Cria os botões
-                    chave_button = Button(label="Copiar código PIX", style=discord.ButtonStyle.blurple)
-                    cancelar_button = Button(label="Cancelar compra", style=discord.ButtonStyle.danger)
-                    entregue_button = Button(label="Compra entregue", style=discord.ButtonStyle.success, disabled=False)  # Botão habilitado
-
-                    # Função de callback para o botão "Copiar código PIX"
-                    async def chave_callback(interaction):
-                        await interaction.response.send_message(f"Código PIX copiado: `{payload_pix}`", ephemeral=True)
-
-                    # Função de callback para o botão "Cancelar compra"
-                    async def cancelar_callback(interaction):
-                        await confirmar_cancelamento(interaction)
-
-                    # Função de callback para o botão "Compra entregue"
-                    async def entregue_callback(interaction):
-                        if not interaction.user.guild_permissions.administrator:
-                            await interaction.response.send_message("Apenas administradores podem marcar a compra como entregue.", ephemeral=True)
-                            return
-
-                        await interaction.response.defer()
-                        await interaction.message.delete()
-
-                        # Envia mensagem no privado do comprador
-                        comprador = interaction.guild.get_member(interaction.user.id)
-                        if comprador:
-                            embed_privado = discord.Embed(
-                                title="Compra entregue!",
-                                description="Sua compra foi entregue com sucesso!",
-                                color=discord.Color.green()
-                            )
-                            embed_privado.add_field(name="Nick de usuário:", value=username, inline=False)
-                            embed_privado.add_field(name="Produto:", value=f"{quantidade} Robux", inline=False)
-                            embed_privado.add_field(name="Data e hora da entrega:", value=datetime.now().strftime("%d/%m/%Y %H:%M:%S"), inline=False)
-                            await comprador.send(embed=embed_privado)
-
-                        # Envia mensagem para o webhook (entrega realizada)
-                        webhook_url = "https://discord.com/api/webhooks/1353003630084624414/-mbkAxUmt-xmijNJYI6PP2prJy__R0kZl03djeXckn0LYPk8ebZmjbWD0MLa_8S-fv1A"
-                        embed_webhook = discord.Embed(
-                            title="Entrega realizada!",
-                            color=discord.Color.green()
-                        )
-                        embed_webhook.add_field(name="Nick de usuário:", value=username, inline=False)
-                        embed_webhook.add_field(name="Produto:", value=f"{quantidade} Robux", inline=False)
-                        embed_webhook.add_field(name="Entregador:", value=interaction.user.mention, inline=False)
-                        embed_webhook.set_thumbnail(url=avatar_url)  # Adiciona o avatar como thumbnail
-
-                        # Marca os cargos
-                        cargos = "<@&1340127685346594896> <@&1340343156121800716>"
-                        await enviar_webhook(webhook_url, embed_webhook, cargos)
-
-                        # Fecha o carrinho
-                        if comprador.id in carrinhos_abertos:
-                            channel = carrinhos_abertos[comprador.id]
-                            await channel.delete(reason="Compra entregue.")
-                            del carrinhos_abertos[comprador.id]
-
-                    # Adiciona os callbacks aos botões
-                    chave_button.callback = chave_callback
-                    cancelar_button.callback = cancelar_callback
-                    entregue_button.callback = entregue_callback
-
-                    # Cria a view e envia a embed com os botões
-                    view = View()
-                    view.add_item(chave_button)
-                    view.add_item(cancelar_button)
-                    view.add_item(entregue_button)
-                    await interaction.followup.send(embed=embed, view=view)
-
-                    # Envia mensagem para o webhook (compra realizada)
-                    webhook_url = "https://discord.com/api/webhooks/1353003630084624414/-mbkAxUmt-xmijNJYI6PP2prJy__R0kZl03djeXckn0LYPk8ebZmjbWD0MLa_8S-fv1A"
-                    embed_compra = discord.Embed(
-                        title="Compra realizada!",
-                        color=discord.Color.blue()
-                    )
-                    embed_compra.add_field(name="Nick de usuário:", value=username, inline=False)
-                    embed_compra.add_field(name="Produto:", value=f"{quantidade} Robux", inline=False)
-                    embed_compra.set_thumbnail(url=avatar_url)  # Adiciona o avatar como thumbnail
-
-                    # Marca os cargos
-                    cargos = "<@&1340127685346594896> <@&1340343156121800716>"
-                    await enviar_webhook(webhook_url, embed_compra, cargos)
-
-                # Função de callback para o botão "Não"
-                async def nao_callback(interaction):
-                    await interaction.response.defer()
-                    await interaction.message.delete()  # Apaga a embed anterior
-                    await interaction.followup.send("Agora, para finalizarmos sua compra, informe seu nome de usuário do Roblox.")
-
-                # Adiciona os callbacks aos botões
-                sim.callback = sim_callback
-                nao.callback = nao_callback
-
-                # Cria a view e envia a embed com os botões
-                view = View()
-                view.add_item(sim)
-                view.add_item(nao)
+                view = ConfirmarUsuarioView(interaction, username, self.quantidade, self.preco_por_1000)
                 await interaction.followup.send(embed=embed, view=view)
                 break
 
             except Exception as e:
                 await interaction.followup.send(f"Ocorreu um erro: {e}")
                 break
-
-    # Função de callback para o botão "Retornar à aba anterior"
-    async def retornar_callback(interaction):
+    
+    async def retornar_callback(self, interaction):
         await interaction.response.defer()
-        await interaction.message.delete()  # Apaga a embed anterior
+        await interaction.message.delete()
         await send_painel_atendimento(interaction.channel, "gamepass")
-
-    # Função de callback para o botão "Cancelar a compra"
-    async def cancelar_callback(interaction):
+    
+    async def cancelar_callback(self, interaction):
         await interaction.response.defer()
         await confirmar_cancelamento(interaction)
+    
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        await self.message.edit(view=self)
 
-    # Adiciona os callbacks aos botões
-    prosseguir.callback = prosseguir_callback
-    retornar.callback = retornar_callback
-    cancelar.callback = cancelar_callback
+# Classe para confirmação de usuário
+class ConfirmarUsuarioView(View):
+    def __init__(self, interaction, username, quantidade, preco_por_1000):
+        super().__init__(timeout=VIEW_TIMEOUT)
+        self.interaction = interaction
+        self.username = username
+        self.quantidade = quantidade
+        self.preco_por_1000 = preco_por_1000
+        
+        sim = Button(label="Sim", style=discord.ButtonStyle.success)
+        nao = Button(label="Não", style=discord.ButtonStyle.danger)
+        
+        sim.callback = self.sim_callback
+        nao.callback = self.nao_callback
+        
+        self.add_item(sim)
+        self.add_item(nao)
+    
+    async def sim_callback(self, interaction):
+        await interaction.response.defer()
+        await interaction.message.delete()
 
-    # Cria a view e envia a embed com os botões
-    view = View()
-    view.add_item(prosseguir)
-    view.add_item(retornar)
-    view.add_item(cancelar)
+        # Configurações do PIX
+        CHAVE_PIX = "12423896603"
+        NOME_RECEBEDOR = "Bernardo"
+        CIDADE_RECEBEDOR = "Rio de Janeiro"
+
+        valor_total = (self.quantidade / 1000) * self.preco_por_1000
+        payload_pix = gerar_payload_pix(CHAVE_PIX, f"{valor_total:.2f}", NOME_RECEBEDOR, CIDADE_RECEBEDOR)
+
+        if not payload_pix:
+            await interaction.followup.send("Erro ao gerar o pagamento PIX. Tente novamente mais tarde.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="## PAGAMENTO VIA PIX",
+            description=f"**Valor:** R$ {valor_total:.2f}\n\nUse o código PIX abaixo para realizar o pagamento:",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="Código PIX:", value=f"`{payload_pix}`", inline=False)
+
+        view = PagamentoView(self.interaction, self.username, self.quantidade, payload_pix)
+        await interaction.followup.send(embed=embed, view=view)
+    
+    async def nao_callback(self, interaction):
+        await interaction.response.defer()
+        await interaction.message.delete()
+        await interaction.followup.send("Por favor, informe novamente seu nome de usuário do Roblox.")
+    
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        await self.message.edit(view=self)
+
+# Classe para pagamento
+class PagamentoView(View):
+    def __init__(self, interaction, username, quantidade, payload_pix):
+        super().__init__(timeout=VIEW_TIMEOUT)
+        self.interaction = interaction
+        self.username = username
+        self.quantidade = quantidade
+        self.payload_pix = payload_pix
+        
+        chave_button = Button(label="Copiar código PIX", style=discord.ButtonStyle.blurple)
+        cancelar_button = Button(label="Cancelar compra", style=discord.ButtonStyle.danger)
+        entregue_button = Button(label="Compra entregue", style=discord.ButtonStyle.success, disabled=False)
+        
+        chave_button.callback = self.chave_callback
+        cancelar_button.callback = self.cancelar_callback
+        entregue_button.callback = self.entregue_callback
+        
+        self.add_item(chave_button)
+        self.add_item(cancelar_button)
+        self.add_item(entregue_button)
+    
+    async def chave_callback(self, interaction):
+        await interaction.response.send_message(f"Código PIX copiado: `{self.payload_pix}`", ephemeral=True)
+    
+    async def cancelar_callback(self, interaction):
+        await confirmar_cancelamento(interaction)
+    
+    async def entregue_callback(self, interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Apenas administradores podem marcar a compra como entregue.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        await interaction.message.delete()
+
+        # Envia mensagem no privado do comprador
+        comprador = interaction.guild.get_member(self.interaction.user.id)
+        if comprador:
+            embed_privado = discord.Embed(
+                title="Compra entregue!",
+                description="Sua compra foi entregue com sucesso!",
+                color=discord.Color.green()
+            )
+            embed_privado.add_field(name="Nick de usuário:", value=self.username, inline=False)
+            embed_privado.add_field(name="Produto:", value=f"{self.quantidade} Robux", inline=False)
+            embed_privado.add_field(name="Data e hora da entrega:", value=datetime.now().strftime("%d/%m/%Y %H:%M:%S"), inline=False)
+            await comprador.send(embed=embed_privado)
+
+        # Envia mensagem para o webhook
+        webhook_url = "https://discord.com/api/webhooks/1353003630084624414/-mbkAxUmt-xmijNJYI6PP2prJy__R0kZl03djeXckn0LYPk8ebZmjbWD0MLa_8S-fv1A"
+        embed_webhook = discord.Embed(
+            title="Entrega realizada!",
+            color=discord.Color.green()
+        )
+        embed_webhook.add_field(name="Nick de usuário:", value=self.username, inline=False)
+        embed_webhook.add_field(name="Produto:", value=f"{self.quantidade} Robux", inline=False)
+        embed_webhook.add_field(name="Entregador:", value=interaction.user.mention, inline=False)
+
+        # Marca os cargos
+        cargos = "<@&1340127685346594896> <@&1340343156121800716>"
+        await enviar_webhook(webhook_url, embed_webhook, cargos)
+
+        # Fecha o carrinho
+        if comprador.id in carrinhos_abertos:
+            channel = carrinhos_abertos[comprador.id]
+            await channel.delete(reason="Compra entregue.")
+            del carrinhos_abertos[comprador.id]
+    
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        await self.message.edit(view=self)
+
+# Classe para o painel de compras
+class PainelComprasView(View):
+    def __init__(self):
+        super().__init__(timeout=None)  # Sem timeout para o painel principal
+        
+        select = Select(
+            placeholder="Selecione o método de compra",
+            options=[
+                discord.SelectOption(label="Robux via gamepass", value="gamepass", description="Compre robux via gamepass aqui."),
+                discord.SelectOption(label="Robux via grupo", value="grupo", description="Compre robux via grupo aqui.")
+            ]
+        )
+        select.callback = self.select_callback
+        self.add_item(select)
+    
+    async def select_callback(self, interaction):
+        if self.children[0].values[0] == "gamepass":
+            await self.processar_carrinho(interaction, "gamepass")
+        elif self.children[0].values[0] == "grupo":
+            await self.processar_carrinho(interaction, "grupo")
+    
+    async def processar_carrinho(self, interaction, metodo):
+        user_id = interaction.user.id
+
+        if user_id in carrinhos_abertos:
+            await interaction.response.send_message(
+                f"Erro, você já tem um carrinho aberto em #{carrinhos_abertos[user_id].name}.",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message("Gerando carrinho, aguarde...", ephemeral=True)
+
+        channel = await create_private_channel(interaction.guild, interaction.user)
+        carrinhos_abertos[user_id] = channel
+
+        await channel.send(f"{interaction.user.mention}, seu carrinho foi criado com sucesso! Siga as instruções de compra abaixo para realizar sua compra, qualquer dúvida, apenas aguarde um administrador entrar em contato <@&1340343156121800716> <@&1340127685346594896>")
+        await interaction.followup.send(f"Seu carrinho foi aberto em {channel.mention}. Continue sua compra por lá!", ephemeral=True)
+        await send_painel_atendimento(channel, metodo)
+
+# Função para enviar o painel de atendimento automático
+async def send_painel_atendimento(channel, metodo_compra):
+    embed = discord.Embed(
+        title="Bem-vindo(a) ao Atendimento automático da Fapy Store!",
+        description="Para continuar com a compra, selecione abaixo o método de compra desejado.",
+        color=discord.Color.blue()
+    )
+    view = PainelAtendimentoView(metodo_compra)
+    await channel.send(embed=embed, view=view)
+
+# Função para confirmar o cancelamento da compra
+async def confirmar_cancelamento(interaction):
+    embed = discord.Embed(
+        title="Cancelar Compra",
+        description="Você realmente deseja fechar o seu carrinho?",
+        color=discord.Color.orange()
+    )
+    view = ConfirmarCancelamentoView()
     await interaction.followup.send(embed=embed, view=view)
 
-    # Pede a quantidade de Robux
+# Função para enviar a embed do carrinho
+async def send_carrinho_embed(interaction, preco_por_1000):
+    embed = discord.Embed(
+        title="CARRINHO",
+        description="Preencha as informações abaixo para continuar com a compra.",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="Quantidade de robux desejada:", value="(Aguardando...)", inline=False)
+    embed.add_field(name="Valor final:", value="(Aguardando...)", inline=False)
+
+    view = CarrinhoView(preco_por_1000)
+    await interaction.followup.send(embed=embed, view=view)
     await interaction.followup.send("Informe a quantidade de Robux que deseja comprar para o preço ser calculado.")
 
-    # Aguarda a quantidade de Robux
     def check(m):
         return m.author == interaction.user and m.channel == interaction.channel
 
@@ -417,15 +460,13 @@ async def send_carrinho_embed(interaction, preco_por_1000):
         try:
             msg = await bot.wait_for("message", timeout=60.0, check=check)
             quantidade = int(msg.content)
-
-            # Calcula o valor total
             valor_total = (quantidade / 1000) * preco_por_1000
 
-            # Atualiza a embed com o valor calculado
+            view.quantidade = quantidade  # Atualiza a quantidade na view
+            
             embed.set_field_at(0, name="Quantidade de robux desejada:", value=f"{quantidade} Robux", inline=False)
             embed.set_field_at(1, name="Valor final:", value=f"R$ {valor_total:.2f}", inline=False)
-
-            # Envia a embed atualizada
+            
             await interaction.followup.send(embed=embed, view=view)
             break
         except ValueError:
@@ -479,111 +520,22 @@ def get_roblox_avatar_url(user_id):
 
 # Função para enviar o painel de compras
 async def send_painel(ctx):
-    # Cria a embed
     embed = discord.Embed(
         title="PAINEL DE COMPRAS",
         description="> Olá, seja bem-vindo ao painel de compras. Para comprar, basta selecionar o que deseja comprar no menu abaixo.",
         color=discord.Color.blue()
     )
-
-    # Adiciona a imagem ao painel de compras
     embed.set_image(url="https://cdn.discordapp.com/attachments/1340143464041414796/1353119422784737381/image.png?ex=67e07e2a&is=67df2caa&hm=c8c0917e08c179224a42511e719e56c248d578c7a35bccd58656b6d67599089b&")
-
-    # Cria o menu de seleção
-    select = Select(
-        placeholder="Selecione o método de compra",
-        options=[
-            discord.SelectOption(label="Robux via gamepass", value="gamepass", description="Compre robux via gamepass aqui."),
-            discord.SelectOption(label="Robux via grupo", value="grupo", description="Compre robux via grupo aqui.")
-        ]
-    )
-
-    # Função de callback para o menu de seleção
-    async def select_callback(interaction):
-        if select.values[0] == "gamepass":
-            user_id = interaction.user.id
-
-            # Verifica se o usuário já tem um carrinho aberto
-            if user_id in carrinhos_abertos:
-                await interaction.response.send_message(
-                    f"Erro, você já tem um carrinho aberto em #{carrinhos_abertos[user_id].name}.",
-                    ephemeral=True
-                )
-                return
-
-            await interaction.response.send_message("Gerando carrinho, aguarde...", ephemeral=True)  # Resposta visível apenas para o usuário
-
-            # Cria o canal de texto privado
-            channel = await create_private_channel(interaction.guild, interaction.user)
-
-            # Armazena o canal no dicionário de carrinhos abertos
-            carrinhos_abertos[user_id] = channel
-
-            # Envia a mensagem de confirmação no canal privado
-            await channel.send(f"{interaction.user.mention}, seu carrinho foi criado com sucesso! Siga as instruções de compra abaixo para realizar sua compra, qualquer dúvida, apenas aguarde um administrador entrar em contato <@&1340343156121800716> <@&1340127685346594896>")
-
-            # Envia a mensagem de confirmação para o usuário
-            await interaction.followup.send(
-                f"Seu carrinho foi aberto em {channel.mention}. Continue sua compra por lá!",
-                ephemeral=True
-            )
-
-            # Envia o painel de atendimento automático
-            await send_painel_atendimento(channel, "gamepass")
-        elif select.values[0] == "grupo":
-            user_id = interaction.user.id
-
-            # Verifica se o usuário já tem um carrinho aberto
-            if user_id in carrinhos_abertos:
-                await interaction.response.send_message(
-                    f"Erro, você já tem um carrinho aberto em #{carrinhos_abertos[user_id].name}.",
-                    ephemeral=True
-                )
-                return
-
-            await interaction.response.send_message("Gerando carrinho, aguarde...", ephemeral=True)  # Resposta visível apenas para o usuário
-
-            # Cria o canal de texto privado
-            channel = await create_private_channel(interaction.guild, interaction.user)
-
-            # Armazena o canal no dicionário de carrinhos abertos
-            carrinhos_abertos[user_id] = channel
-
-            # Envia a mensagem de confirmação no canal privado
-            await channel.send(f"{interaction.user.mention}, seu carrinho foi criado com sucesso! Siga as instruções de compra abaixo para realizar sua compra, qualquer dúvida, apenas aguarde um administrador entrar em contato <@&1340343156121800716> <@&1340127685346594896>")
-
-            # Envia a mensagem de confirmação para o usuário
-            await interaction.followup.send(
-                f"Seu carrinho foi aberto em {channel.mention}. Continue sua compra por lá!",
-                ephemeral=True
-            )
-
-            # Envia o painel de atendimento automático
-            await send_painel_atendimento(channel, "grupo")
-
-    # Adiciona o callback ao menu
-    select.callback = select_callback
-
-    # Cria a view e envia a embed com o menu
-    view = View()
-    view.add_item(select)
+    
+    view = PainelComprasView()
+    await ctx.send(embed=embed, view=view)
     return await ctx.send(embed=embed, view=view)
-
-# Tarefa para reenviar o painel a cada 5 minutos
-@tasks.loop(minutes=5)
-async def reenviar_painel(ctx):
-    global painel_message
-    if painel_message:
-        await painel_message.delete()
-    painel_message = await send_painel(ctx)
 
 # Comando !set para enviar o painel de compras
 @bot.command()
-@commands.has_permissions(administrator=True)  # Restringe o comando a administradores
+@commands.has_permissions(administrator=True)
 async def set(ctx):
-    global painel_message
-    painel_message = await send_painel(ctx)
-    reenviar_painel.start(ctx)
+    await send_painel(ctx)
 
 # Evento para remover o carrinho do dicionário quando o canal é excluído
 @bot.event
@@ -593,29 +545,20 @@ async def on_guild_channel_delete(channel):
             del carrinhos_abertos[user_id]
             break
 
-# Evento quando o bot está pronto
-@bot.event
-async def on_ready():
-    print("Bot está online!")  # Mensagem no console quando o bot ficar online
-    await bot.tree.sync()  # Sincroniza os comandos slash
-
 # Comando /cobrar para gerar pagamentos personalizados
 @bot.tree.command(name="cobrar", description="Gera um pagamento personalizado")
 @app_commands.describe(nome_produto="Nome do produto", valor="Valor do produto")
 async def cobrar(interaction: discord.Interaction, nome_produto: str, valor: float):
-    # Configurações do PIX
-    CHAVE_PIX = "12423896603"  # Chave PIX (CPF)
-    NOME_RECEBEDOR = "Bernardo"  # Nome do recebedor
-    CIDADE_RECEBEDOR = "Rio de Janeiro"  # Cidade do recebedor
+    CHAVE_PIX = "12423896603"
+    NOME_RECEBEDOR = "Bernardo"
+    CIDADE_RECEBEDOR = "Rio de Janeiro"
 
-    # Gera o payload PIX
     payload_pix = gerar_payload_pix(CHAVE_PIX, f"{valor:.2f}", NOME_RECEBEDOR, CIDADE_RECEBEDOR)
 
     if not payload_pix:
         await interaction.response.send_message("Erro ao gerar o pagamento PIX. Tente novamente mais tarde.", ephemeral=True)
         return
 
-    # Cria a embed de pagamento
     embed = discord.Embed(
         title="## PAGAMENTO VIA PIX",
         description=f"**Produto:** {nome_produto}\n**Valor:** R$ {valor:.2f}\n\nUse o código PIX abaixo para realizar o pagamento:",
@@ -623,28 +566,39 @@ async def cobrar(interaction: discord.Interaction, nome_produto: str, valor: flo
     )
     embed.add_field(name="Código PIX:", value=f"`{payload_pix}`", inline=False)
 
-    # Cria os botões
-    chave_button = Button(label="Copiar código PIX", style=discord.ButtonStyle.blurple)
-    cancelar_button = Button(label="Cancelar compra", style=discord.ButtonStyle.danger)
+    class CobrancaView(View):
+        def __init__(self):
+            super().__init__(timeout=VIEW_TIMEOUT)
+            
+            chave_button = Button(label="Copiar código PIX", style=discord.ButtonStyle.blurple)
+            cancelar_button = Button(label="Cancelar compra", style=discord.ButtonStyle.danger)
+            
+            chave_button.callback = self.chave_callback
+            cancelar_button.callback = self.cancelar_callback
+            
+            self.add_item(chave_button)
+            self.add_item(cancelar_button)
+        
+        async def chave_callback(self, interaction):
+            await interaction.response.send_message(f"Código PIX copiado: `{payload_pix}`", ephemeral=True)
+        
+        async def cancelar_callback(self, interaction):
+            await interaction.response.defer()
+            await interaction.message.delete()
+        
+        async def on_timeout(self):
+            for item in self.children:
+                item.disabled = True
+            await self.message.edit(view=self)
 
-    # Função de callback para o botão "Copiar código PIX"
-    async def chave_callback(interaction):
-        await interaction.response.send_message(f"Código PIX copiado: `{payload_pix}`", ephemeral=True)
-
-    # Função de callback para o botão "Cancelar compra"
-    async def cancelar_callback(interaction):
-        await interaction.response.defer()
-        await interaction.message.delete()
-
-    # Adiciona os callbacks aos botões
-    chave_button.callback = chave_callback
-    cancelar_button.callback = cancelar_callback
-
-    # Cria a view e envia a embed com os botões
-    view = View()
-    view.add_item(chave_button)
-    view.add_item(cancelar_button)
+    view = CobrancaView()
     await interaction.response.send_message(embed=embed, view=view)
 
+# Evento quando o bot está pronto
+@bot.event
+async def on_ready():
+    print("Bot está online!")
+    await bot.tree.sync()
+
 # Inicia o bot
-bot.run(os.getenv("TOKEN"))  # Usa a variável de ambiente para o token
+bot.run(TOKEN)
