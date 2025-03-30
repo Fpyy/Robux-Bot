@@ -459,10 +459,12 @@ class PagamentoView(BaseView):
 
 # Funções principais
 async def send_painel_atendimento(channel, metodo_compra):
+    gamepass_msg = "💰 **Gamepass sem taxa** - R$35/1k\n💸 **Gamepass com taxa** - R$45/1k"
+    grupo_msg = "💸 **Apenas com taxa** - R$45/1k"
+    
     embed = Embed(
         title=f"🛍️ Método de Compra - {'Gamepass' if metodo_compra == 'gamepass' else 'Grupo'}",
-        description="Selecione como deseja comprar seus Robux:\n\n"
-                   f"{'💰 **Gamepass sem taxa** - R$35/1k\n💸 **Gamepass com taxa** - R$45/1k' if metodo_compra == 'gamepass' else '💸 **Apenas com taxa** - R$45/1k'}",
+        description=f"Selecione como deseja comprar seus Robux:\n\n{gamepass_msg if metodo_compra == 'gamepass' else grupo_msg}",
         color=discord.Color.blue()
     )
     embed.set_footer(text="Clique nos botões abaixo para selecionar")
