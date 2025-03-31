@@ -21,7 +21,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Variáveis globais
 carrinhos_abertos = {}
-VIEW_TIMEOUT = 300  # 5 minutos
 CHAVE_PIX = "12423896603"
 WEBHOOK_URL = "https://discord.com/api/webhooks/1353003630084624414/-mbkAxUmt-xmijNJYI6PP2prJy__R0kZl03djeXckn0LYPk8ebZmjbWD0MLa_8S-fv1A"
 
@@ -130,7 +129,7 @@ async def confirmar_cancelamento(interaction):
         
         class ConfirmacaoView(View):
             def __init__(self):
-                super().__init__(timeout=VIEW_TIMEOUT)
+                super().__init__(timeout=None)
                 self.add_item(Button(label="✅ Sim", style=discord.ButtonStyle.danger))
                 self.add_item(Button(label="❌ Não", style=discord.ButtonStyle.secondary))
             
@@ -146,7 +145,6 @@ async def confirmar_cancelamento(interaction):
                 await interaction.message.delete()
                 return False
         
-        # Verifica se já foi respondido
         if not interaction.response.is_done():
             await interaction.response.send_message(embed=embed, view=ConfirmacaoView(), ephemeral=True)
         else:
@@ -157,15 +155,7 @@ async def confirmar_cancelamento(interaction):
 # Classes de View
 class BaseView(View):
     def __init__(self, *args, **kwargs):
-        super().__init__(timeout=VIEW_TIMEOUT, *args, **kwargs)
-    
-    async def on_timeout(self):
-        for item in self.children:
-            item.disabled = True
-        try:
-            await self.message.edit(view=self)
-        except:
-            pass
+        super().__init__(timeout=None, *args, **kwargs)
 
 class PainelComprasView(BaseView):
     def __init__(self):
