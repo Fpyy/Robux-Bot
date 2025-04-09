@@ -28,12 +28,20 @@ WEBHOOK_URL = "https://discord.com/api/webhooks/1353003630084624414/-mbkAxUmt-xm
 EMBED_COLOR = 0xffffff  # Branco
 EMOJIS = {
     "loading": "<a:white:1359645236472844609>",
-    "success": "<a:white1:1359645251442311199>",
-    "error": "<:White_Snapchat:1359645221297848604>",
-    "money": "<a:white2:1359645264712962158>",
+    "success": "<:checkmark_correto:1359653313230143710>",
+    "error": "<:checkmark_errado:1359653335862350005>",
+    "money": "<:robux:1359653325213270199>",
     "cart": "🛒",
     "info": "ℹ️",
-    "warning": "⚠️"
+    "warning": "⚠️",
+    "gamepass": "🎮",
+    "group": "👥"
+}
+
+# Banner URLs
+BANNERS = {
+    "welcome": "https://cdn.discordapp.com/attachments/1340143464041414796/1359650076452061376/image.png",
+    "payment": "https://cdn.discordapp.com/attachments/1340143464041414796/1353119422784737381/image.png"
 }
 
 # Funções auxiliares
@@ -144,8 +152,9 @@ async def confirmar_cancelamento(interaction):
                 super().__init__(timeout=60)
             
             @discord.ui.button(label="✅ Sim", style=discord.ButtonStyle.danger)
-            async def confirmar(self, button_interaction, button):
+            async def confirmar(self, button_interaction: discord.Interaction, button: discord.ui.Button):
                 if button_interaction.user != interaction.user:
+                    await button_interaction.response.send_message(f"{EMOJIS['error']} Você não pode interagir com este botão!", ephemeral=True)
                     return
                 
                 if interaction.user.id in carrinhos_abertos:
@@ -154,14 +163,15 @@ async def confirmar_cancelamento(interaction):
                     del carrinhos_abertos[interaction.user.id]
                 
                 await button_interaction.response.send_message(
-                    f"{EMOJIS['error']} **Compra cancelada com sucesso!**", 
+                    f"{EMOJIS['success']} **Compra cancelada com sucesso!**", 
                     ephemeral=True
                 )
                 await interaction.message.delete()
             
             @discord.ui.button(label="❌ Não", style=discord.ButtonStyle.secondary)
-            async def cancelar(self, button_interaction, button):
+            async def cancelar(self, button_interaction: discord.Interaction, button: discord.ui.Button):
                 if button_interaction.user != interaction.user:
+                    await button_interaction.response.send_message(f"{EMOJIS['error']} Você não pode interagir com este botão!", ephemeral=True)
                     return
                 
                 await button_interaction.response.send_message(
@@ -186,14 +196,14 @@ class PainelComprasView(BaseView):
         select = Select(
             placeholder="🔍 Selecione o método de compra",
             options=[
-                discord.SelectOption(label="💰 Robux via Gamepass", value="gamepass", description="Compre Robux via Gamepass"),
-                discord.SelectOption(label="👥 Robux via Grupo", value="grupo", description="Compre Robux via Grupo")
+                discord.SelectOption(label=f"{EMOJIS['gamepass']} Robux via Gamepass", value="gamepass", description="Compre Robux via Gamepass"),
+                discord.SelectOption(label=f"{EMOJIS['group']} Robux via Grupo", value="grupo", description="Compre Robux via Grupo")
             ]
         )
         select.callback = self.select_callback
         self.add_item(select)
     
-    async def select_callback(self, interaction):
+    async def select_callback(self, interaction: discord.Interaction):
         metodo = interaction.data["values"][0]
         await interaction.response.defer()
         
@@ -231,6 +241,7 @@ class PainelComprasView(BaseView):
                        f"**🔹 Dúvidas?** Aguarde um atendente",
             color=EMBED_COLOR
         )
+        embed_channel.set_image(url=BANNERS["welcome"])
         await channel.send(embed=embed_channel)
         await send_painel_atendimento(channel, metodo)
 
@@ -240,14 +251,14 @@ class PainelAtendimentoView(BaseView):
         self.metodo_compra = metodo_compra
         
         if metodo_compra == "gamepass":
-            self.add_item(Button(emoji="💸", label="Com Taxa (R$45/1k)", style=discord.ButtonStyle.red, custom_id="com_taxa"))
-            self.add_item(Button(emoji="💰", label="Sem Taxa (R$35/1k)", style=discord.ButtonStyle.green, custom_id="sem_taxa"))
+            self.add_item(Button(emoji="💸", label="Com Taxa (R$45/1k)", style=discord.ButtonStyle.red, custom_id="com_taxa", row=0))
+            self.add_item(Button(emoji="💰", label="Sem Taxa (R$35/1k)", style=discord.ButtonStyle.green, custom_id="sem_taxa", row=0))
+            self.add_item(Button(emoji="❌", label="Cancelar Compra", style=discord.ButtonStyle.danger, custom_id="cancelar", row=0))
         elif metodo_compra == "grupo":
-            self.add_item(Button(emoji="💸", label="Com Taxa (R$45/1k)", style=discord.ButtonStyle.red, custom_id="com_taxa"))
-        
-        self.add_item(Button(emoji="❌", label="Cancelar Compra", style=discord.ButtonStyle.danger, custom_id="cancelar", row=1))
+            self.add_item(Button(emoji="💸", label="Com Taxa (R$45/1k)", style=discord.ButtonStyle.red, custom_id="com_taxa", row=0))
+            self.add_item(Button(emoji="❌", label="Cancelar Compra", style=discord.ButtonStyle.danger, custom_id="cancelar", row=0))
 
-    async def interaction_check(self, interaction):
+    async def interaction_check(self, interaction: discord.Interaction):
         try:
             if interaction.data["custom_id"] == "com_taxa":
                 await interaction.response.defer()
@@ -268,11 +279,11 @@ class CarrinhoView(BaseView):
         self.quantidade = None
         self.original_message = original_message
         
-        self.add_item(Button(emoji="➡️", label="Prosseguir", style=discord.ButtonStyle.primary, custom_id="prosseguir"))
-        self.add_item(Button(emoji="🔙", label="Voltar", style=discord.ButtonStyle.secondary, custom_id="voltar"))
-        self.add_item(Button(emoji="❌", label="Cancelar", style=discord.ButtonStyle.danger, custom_id="cancelar", row=1))
+        self.add_item(Button(emoji="➡️", label="Prosseguir", style=discord.ButtonStyle.primary, custom_id="prosseguir", row=0))
+        self.add_item(Button(emoji="🔙", label="Voltar", style=discord.ButtonStyle.secondary, custom_id="voltar", row=0))
+        self.add_item(Button(emoji="❌", label="Cancelar", style=discord.ButtonStyle.danger, custom_id="cancelar", row=0))
 
-    async def interaction_check(self, interaction):
+    async def interaction_check(self, interaction: discord.Interaction):
         try:
             if interaction.data["custom_id"] == "prosseguir":
                 await interaction.response.defer()
@@ -287,7 +298,7 @@ class CarrinhoView(BaseView):
         except Exception as e:
             print(f"{EMOJIS['error']} Erro no carrinho: {e}")
 
-    async def prosseguir_compra(self, interaction):
+    async def prosseguir_compra(self, interaction: discord.Interaction):
         embed = Embed(
             title=f"{EMOJIS['info']} Confirmação de Usuário",
             description="Por favor, **digite seu nome de usuário do Roblox** no chat:",
@@ -346,10 +357,10 @@ class ConfirmarUsuarioView(BaseView):
         self.quantidade = quantidade
         self.preco_por_1000 = preco_por_1000
         
-        self.add_item(Button(emoji="✅", label="Sim, Continuar", style=discord.ButtonStyle.success, custom_id="sim"))
-        self.add_item(Button(emoji="❌", label="Não, Corrigir", style=discord.ButtonStyle.danger, custom_id="nao"))
+        self.add_item(Button(emoji=EMOJIS['success'], label="Sim, Continuar", style=discord.ButtonStyle.success, custom_id="sim", row=0))
+        self.add_item(Button(emoji=EMOJIS['error'], label="Não, Corrigir", style=discord.ButtonStyle.danger, custom_id="nao", row=0))
 
-    async def interaction_check(self, interaction):
+    async def interaction_check(self, interaction: discord.Interaction):
         try:
             if interaction.data["custom_id"] == "sim":
                 await interaction.response.defer()
@@ -360,7 +371,7 @@ class ConfirmarUsuarioView(BaseView):
         except Exception as e:
             print(f"{EMOJIS['error']} Erro na confirmação: {e}")
 
-    async def corrigir_usuario(self, interaction):
+    async def corrigir_usuario(self, interaction: discord.Interaction):
         embed = Embed(
             title=f"{EMOJIS['info']} Digite Novamente",
             description="Por favor, **digite seu nome de usuário do Roblox** novamente:",
@@ -410,7 +421,7 @@ class ConfirmarUsuarioView(BaseView):
             )
             await interaction.followup.send(embed=embed)
 
-    async def processar_pagamento(self, interaction):
+    async def processar_pagamento(self, interaction: discord.Interaction):
         valor_total = (self.quantidade / 1000) * self.preco_por_1000
         payload_pix = gerar_payload_pix(CHAVE_PIX, f"{valor_total:.2f}", "Bernardo", "Rio de Janeiro")
         
@@ -448,11 +459,11 @@ class PagamentoView(BaseView):
         self.quantidade = quantidade
         self.payload_pix = payload_pix
         
-        self.add_item(Button(emoji="📋", label="Copiar PIX", style=discord.ButtonStyle.blurple, custom_id="copiar"))
-        self.add_item(Button(emoji="❌", label="Cancelar", style=discord.ButtonStyle.danger, custom_id="cancelar"))
-        self.add_item(Button(emoji="✅", label="Marcar como Entregue", style=discord.ButtonStyle.success, custom_id="entregue", row=1))
+        self.add_item(Button(emoji="📋", label="Copiar PIX", style=discord.ButtonStyle.blurple, custom_id="copiar", row=0))
+        self.add_item(Button(emoji="❌", label="Cancelar", style=discord.ButtonStyle.danger, custom_id="cancelar", row=0))
+        self.add_item(Button(emoji=EMOJIS['success'], label="Marcar como Entregue", style=discord.ButtonStyle.success, custom_id="entregue", row=1))
 
-    async def interaction_check(self, interaction):
+    async def interaction_check(self, interaction: discord.Interaction):
         try:
             if interaction.data["custom_id"] == "copiar":
                 await interaction.response.send_message(f"📋 **Código PIX copiado!**\n```{self.payload_pix}```", ephemeral=True)
@@ -465,7 +476,7 @@ class PagamentoView(BaseView):
         except Exception as e:
             print(f"{EMOJIS['error']} Erro no pagamento: {e}")
 
-    async def marcar_entregue(self, interaction):
+    async def marcar_entregue(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
             await interaction.followup.send(f"{EMOJIS['error']} **Erro:** Apenas administradores podem marcar como entregue!", ephemeral=True)
             return
@@ -527,7 +538,7 @@ async def send_painel_atendimento(channel, metodo_compra):
     embed.set_footer(text="Clique nos botões abaixo para selecionar")
     await channel.send(embed=embed, view=PainelAtendimentoView(metodo_compra))
 
-async def send_carrinho_embed(interaction, preco_por_1000):
+async def send_carrinho_embed(interaction: discord.Interaction, preco_por_1000):
     embed = Embed(
         title=f"{EMOJIS['cart']} Seu Carrinho de Compras",
         description="Informe **quantos Robux** você deseja comprar:\n\n"
@@ -580,12 +591,12 @@ async def set(ctx):
     embed = Embed(
         title=f"{EMOJIS['loading']} PAINEL DE COMPRAS - FAPY STORE",
         description="Selecione abaixo como deseja comprar seus Robux:\n\n"
-                   f"{EMOJIS['money']} **Via Gamepass** (Com ou sem taxa)\n"
-                   f"{EMOJIS['money']} **Via Grupo** (Apenas com taxa)\n\n"
+                   f"{EMOJIS['gamepass']} **Via Gamepass** (Com ou sem taxa)\n"
+                   f"{EMOJIS['group']} **Via Grupo** (Apenas com taxa)\n\n"
                    f"{EMOJIS['cart']} Clique no menu abaixo para começar!",
         color=EMBED_COLOR
     )
-    embed.set_image(url="https://cdn.discordapp.com/attachments/1340143464041414796/1353119422784737381/image.png")
+    embed.set_image(url=BANNERS["payment"])
     await ctx.send(embed=embed, view=PainelComprasView())
 
 @bot.event
