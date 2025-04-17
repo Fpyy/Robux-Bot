@@ -40,8 +40,8 @@ EMOJIS = {
 
 # Banner URLs
 BANNERS = {
-    "welcome": "https://cdn.discordapp.com/attachments/1340143464041414796/1359650076452061376/image.png",
-    "payment": "https://cdn.discordapp.com/attachments/1340143464041414796/1353119422784737381/image.png"
+    "welcome": "https://cdn.discordapp.com/attachments/1340143464041414796/1362539280454652115/1744651990823.jpg?ex=6802c317&is=68017197&hm=c5c8689bc69de9d5025b634a6966fe7b67e43dd0c7462a40a87bfe1dd372bd50&",
+    "payment": "https://cdn.discordapp.com/attachments/1340143464041414796/1362539280982868138/1_9f5676ae-f373-4bfd-8e1a-d774081aee54.jpg?ex=6802c317&is=68017197&hm=34c7a219ec38c3816027f6b218fc7ec7d2c5af310db60a4121914c143192e1c2&"
 }
 
 # Funções auxiliares
