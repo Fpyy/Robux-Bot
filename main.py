@@ -568,29 +568,40 @@ async def send_carrinho_embed(interaction: discord.Interaction, preco_por_1000):
         return m.author == interaction.user and m.channel == interaction.channel
     
     try:
-        msg = await bot.wait_for("message", timeout=60.0, check=check)
-        quantidade = int(msg.content)
-        valor_total = (quantidade / 1000) * preco_por_1000
-        
-        embed.set_field_at(0, name="🔢 Quantidade", value=f"{quantidade} Robux", inline=False)
-        embed.set_field_at(1, name="💲 Valor Total", value=f"R$ {valor_total:.2f}", inline=False)
-        embed.description = f"{EMOJIS['success']} Quantidade definida para **{quantidade} Robux**\n\n**💵 Preço por 1.000 Robux:** R$ {preco_por_1000:.2f}"
-        
-        view.quantidade = quantidade
-        await view.original_message.edit(embed=embed, view=view)
-        await msg.delete()
-        
-    except ValueError:
+        while True:
+            msg = await bot.wait_for("message", timeout=60.0, check=check)
+            
+            try:
+                # Extrai apenas os números da mensagem
+                quantidade = int(''.join(filter(str.isdigit, msg.content)))
+                
+                if quantidade <= 0:
+                    raise ValueError
+                
+                valor_total = (quantidade / 1000) * preco_por_1000
+                
+                embed.set_field_at(0, name="🔢 Quantidade", value=f"{quantidade} Robux", inline=False)
+                embed.set_field_at(1, name="💲 Valor Total", value=f"R$ {valor_total:.2f}", inline=False)
+                embed.description = f"{EMOJIS['success']} Quantidade definida para **{quantidade} Robux**\n\n**💵 Preço por 1.000 Robux:** R$ {preco_por_1000:.2f}"
+                
+                view.quantidade = quantidade
+                await view.original_message.edit(embed=embed, view=view)
+                await msg.delete()
+                break
+                
+            except ValueError:
+                await msg.delete()
+                error_msg = await interaction.followup.send(
+                    f"{EMOJIS['error']} **Valor inválido!** Digite apenas números (ex: 1000) sem texto adicional.",
+                    ephemeral=True,
+                    delete_after=10
+                )
+                continue
+                
+    except asyncio.TimeoutError:
         embed = Embed(
-            title=f"{EMOJIS['error']} Valor Inválido",
-            description="Por favor, digite **apenas números**!\nExemplo: `5000` para 5.000 Robux",
-            color=EMBED_COLOR
-        )
-        await interaction.followup.send(embed=embed, delete_after=10)
-    except Exception as e:
-        embed = Embed(
-            title=f"{EMOJIS['error']} Erro Inesperado",
-            description=f"Ocorreu um erro: {str(e)}",
+            title=f"{EMOJIS['error']} Tempo Esgotado",
+            description="Você demorou muito para responder. Por favor, inicie novamente o processo.",
             color=EMBED_COLOR
         )
         await interaction.followup.send(embed=embed, delete_after=10)
